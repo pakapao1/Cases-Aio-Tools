@@ -1,1 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CASES AIO TOOLS By Akmal</title>
 
+<style>
+  body { font-family: Arial, sans-serif; background:#f4f7fb; padding:40px; }
+  .box { background:white; max-width:900px; margin:25px auto; padding:25px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+  h2 { margin-top:0; }
+  button { padding:10px 25px; font-size:15px; cursor:pointer; margin-top:10px; }
+  pre { background:#1e1e1e; color:#e6e6e6; padding:15px; margin-top:15px; border-radius:6px; font-size:13px; white-space:pre-wrap; }
+  textarea { width:100%; height:220px; margin-top:10px; }
+  select, input[type="number"] { margin-top:10px; padding:8px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  small { display:block; margin-top:8px; color:#444; line-height:1.35; }
+  label { display:inline-flex; gap:6px; align-items:center; }
+  .status { margin-top:12px; padding:10px; background:#f1f5ff; border-radius:6px; color:#1f2a44; font-size:13px; white-space:pre-wrap; }
+
+  /* ✅ Progress bar UI */
+  .progress-wrap { margin-top:14px; }
+  .progress-top { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#46506a; margin-bottom:6px; }
+  .progress { height:10px; background:#e9edf6; border-radius:999px; overflow:hidden; }
+  .progress .bar { height:100%; width:0%; background:#2b7cff; transition:width .25s ease; }
+</style>
+</head>
+
+<body>
+
+<!-- ✅ BOX 0: PARSER SLIM -->
+<div class="box">
+  <h2>Parser Slim: TXT/HTML → P-only</h2>
+
+  <div class="row">
+    <input type="file" id="inFile" accept=".txt,.html,text/plain,text/html">
+    <button onclick="convertNow()">Convert</button>
+    <button onclick="downloadOutput()">Download output.html</button>
+  </div>
+
+  <small>
+    ✔ Output hanya <b>&lt;p&gt;...&lt;/p&gt;</b> (tiada blockquote, tiada head/title)<br>
+    ✔ Buang sampah: BOM, �, control chars, bullet <b>·</b><br>
+    ✔ “ ” auto jadi <b>"</b><br>
+    ✔ Buang watermark eFILING (basic)
+  </small>
+
+  <div id="status" class="status">Status: pilih file .txt / .html dulu.</div>
+
+  <!-- ✅ Progress bar -->
+  <div class="progress-wrap">
+    <div class="progress-top"><span>Progress</span><span id="pb0pct">0%</span></div>
+    <div class="progress"><div class="bar" id="pb0"></div></div>
+  </div>
+</div>
+
+<!-- ✅ BOX 1 -->
+<div class="box">
+  <h2>① Format Kotak Nombor Auto Blockquote</h2>
+  <input type="file" id="f1">
+  <br>
+  <button onclick="runKotak()">Generate</button>
+  <pre id="log1"></pre>
+
+  <!-- ✅ Progress bar -->
+  <div class="progress-wrap">
+    <div class="progress-top"><span>Progress</span><span id="pb1pct">0%</span></div>
+    <div class="progress"><div class="bar" id="pb1"></div></div>
+  </div>
+</div>
+
+<!-- ✅ BOX 2 -->
+<div class="box">
+  <h2>② Format Nombor Titik + Auto Blockquote</h2>
+  <input type="file" id="f2">
+  <br>
+  <button onclick="runNombor()">Generate</button>
+  <pre id="log2"></pre>
+
+  <!-- ✅ Progress bar -->
+  <div class="progress-wrap">
+    <div class="progress-top"><span>Progress</span><span id="pb2pct">0%</span></div>
+    <div class="progress"><div class="bar" id="pb2"></div></div>
+  </div>
+</div>
+
+<!-- ✅ BOX 3 -->
+<div class="box">
+  <h2>③ Align Paragraph & Spacing</h2>
+  <input type="file" id="f3">
+  <br>
+  <button onclick="runAlign()">Generate</button>
+  <pre id="log3"></pre>
+
+  <!-- ✅ Progress bar -->
+  <div class="progress-wrap">
+    <div class="progress-top"><span>Progress</span><span id="pb3pct">0%</span></div>
+    <div class="progress"><div class="bar" id="pb3"></div></div>
+  </div>
+</div>
+
+<script>
+// =========================
+// ✅ PROGRESS HELPERS
+// =========================
+let _pbTimers = {};
+
+function setProgress(pbIndex, percent) {
+  const bar = document.getElementById(`pb${pbIndex}`);
+  const pct = document.getElementById(`pb${pbIndex}pct`);
+  if (!bar || !pct) return;
+
+  const p = Math.max(0, Math.min(100, Math.round(percent)));
+  bar.style.width = p + "%";
+  pct.textContent = p + "%";
+}
+
+function resetProgress(pbIndex) {
+  stopProgress(pbIndex);
+  setProgress(pbIndex, 0);
+}
+
+function stopProgress(pbIndex) {
+  if (_pbTimers[pbIndex]) {
+    clearInterval(_pbTimers[pbIndex]);
+    delete _pbTimers[pbIndex];
+  }
+}
+
+// animasi progress simple (simulated steps)
+function runFakeProgress(pbIndex, steps = [10, 35, 60, 85], interval = 160) {
+  stopProgress(pbIndex);
+  let i = 0;
+  setProgress(pbIndex, 0);
+
+  _pbTimers[pbIndex] = setInterval(() => {
+    if (i >= steps.length) return; // tunggu finishProgress dipanggil
+    setProgress(pbIndex, steps[i]);
+    i++;
+  }, interval);
+}
+
+function finishProgress(pbIndex) {
+  stopProgress(pbIndex);
+  setProgress(pbIndex, 100);
+  setTimeout(() => setProgress(pbIndex, 0), 1200);
+}
+
+// reset bila pilih file untuk tool 1/2/3
+function wireResetOnFilePick(fileId, pbIndex, logId) {
+  const el = document.getElementById(fileId);
+  if (!el) return;
+  el.addEventListener("change", () => {
+    resetProgress(pbIndex);
+    const log = document.getElementById(logId);
+    if (log) log.textContent = "";
+  });
+}
+wireResetOnFilePick("f1", 1, "log1");
+wireResetOnFilePick("f2", 2, "log2");
+wireResetOnFilePick("f3", 3, "log3");
+
+// =========================
+// PARSER SLIM (TXT/HTML -> <p> only)
+// =========================
+let LOADED_RAW = "";
+let LAST_OUTPUT = "";
+
+function setStatus(msg) {
+  const el = document.getElementById("status");
+  if (el) el.textContent = msg; // guna emoji (bukan entity) supaya confirm keluar
+}
+
+function stripBadChars(s) {
+  return String(s || "")
+    .replace(/^\uFEFF/, "")                 // BOM
+    .replace(/\uFFFD/g, "")                 // �
+    .replace(/\uF0B7/g, "")                 // · (wingdings bullet)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""); // control chars
+}
+
+function normalizeQuotes(s) {
+  return String(s || "").replace(/[“”]/g, '"');
+}
+
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// kalau input tu HTML, strip jadi text dulu
+function maybeHtmlToText(raw) {
+  const s = String(raw || "");
+  if (!/[<][a-z!/]/i.test(s)) return s;
+
+  return s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p\s*>/gi, "\n\n")
+    .replace(/<\/div\s*>/gi, "\n")
+    .replace(/<\/li\s*>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "") // buang semua tag
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+}
+
+function cleanText(raw) {
+  let t = maybeHtmlToText(raw);
+  t = normalizeQuotes(stripBadChars(t))
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  // buang watermark eFILING (basic)
+  t = t.split("\n").filter(line => {
+    const s = line.replace(/\s+/g, " ").trim();
+    if (!s) return true;
+
+    if (/serial number will be used to verify the originality of this document via efiling portal/i.test(s)) return false;
+    if (/\befiling portal\b/i.test(s) && /\bserial number\b/i.test(s)) return false;
+    if (/\bS\/N\b/i.test(s) && /[A-Za-z0-9]{10,}/.test(s)) return false;
+
+    return true;
+  }).join("\n");
+
+  // buang trailing spaces setiap line
+  t = t.replace(/[ \t]+\n/g, "\n");
+  return t.trim();
+}
+
+// 1 <p> = 1 perenggan, join line wrap
+function textToPOnly(raw) {
+  const t = cleanText(raw);
+  if (!t) return "";
+
+  const blocks = t.split(/\n\s*\n+/g).map(b => b.trim()).filter(Boolean);
+
+  return blocks.map(block => {
+    const lines = block.split("\n").map(x => x.trim()).filter(Boolean);
+
+    let merged = "";
+    for (const cur of lines) {
+      if (!merged) { merged = cur; continue; }
+
+      if (/-$/.test(merged)) merged = merged.replace(/-$/, "") + cur; // hyphen wrap
+      else merged = merged + " " + cur;
+    }
+
+    merged = merged.replace(/\s{2,}/g, " ").trim();
+    return `<p>${escapeHtml(merged)}</p>`;
+  }).join("\n");
+}
+
+const inFileEl = document.getElementById("inFile");
+if (inFileEl) {
+  inFileEl.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+
+    resetProgress(0);
+    runFakeProgress(0, [15, 35]);
+
+    const r = new FileReader();
+    r.onload = () => {
+      LOADED_RAW = String(r.result || "");
+      LAST_OUTPUT = "";
+      setStatus(`Loaded: ${f.name}\nSaiz: ${LOADED_RAW.length.toLocaleString()} chars\nTekan Convert.`);
+      stopProgress(0);
+      setProgress(0, 50);
+      setTimeout(() => setProgress(0, 0), 900);
+    };
+    r.onerror = () => {
+      setStatus("❌ Gagal baca file.");
+      stopProgress(0);
+      setProgress(0, 0);
+    };
+    r.readAsText(f);
+  });
+}
+
+function convertNow() {
+  if (!LOADED_RAW.trim()) return alert("Pilih file dulu (txt/html).");
+
+  resetProgress(0);
+  runFakeProgress(0, [10, 35, 60, 85], 140);
+
+  LAST_OUTPUT = textToPOnly(LOADED_RAW);
+  const pCount = (LAST_OUTPUT.match(/<p>/g) || []).length;
+
+  setStatus(`✅ Convert siap.\nJumlah <p>: ${pCount}\nSedia untuk Download.`);
+  finishProgress(0);
+}
+
+function downloadOutput() {
+  if (!LAST_OUTPUT.trim()) {
+    if (!LOADED_RAW.trim()) return alert("Pilih file dulu.");
+    convertNow();
+  }
+  if (!LAST_OUTPUT.trim()) return;
+
+  resetProgress(0);
+  runFakeProgress(0, [20, 55, 80], 140);
+
+  download(LAST_OUTPUT, "output.html");
+  finishProgress(0);
+}
+
+// =========================
+// TOOL 1 – KOTAK NOMBOR
+// =========================
+function protectBlockquotes(html) {
+  const blocks = [];
+  html = html.replace(/<blockquote>[\s\S]*?<\/blockquote>/gi, m => {
+    blocks.push(m);
+    return `__BQ_${blocks.length - 1}__`;
+  });
+  return { html, blocks };
+}
+function restoreBlockquotes(html, blocks) {
+  blocks.forEach((b, i) => html = html.replace(`__BQ_${i}__`, b));
+  return html;
+}
+
+function runKotak() {
+  const f = document.getElementById("f1").files[0];
+  if (!f) return alert("Upload file");
+
+  resetProgress(1);
+  runFakeProgress(1, [10, 30, 55, 75], 160);
+
+  const r = new FileReader();
+  r.onload = () => {
+    setProgress(1, 80);
+
+    let html = r.result;
+    const p = protectBlockquotes(html);
+    html = p.html;
+
+    html = html.replace(
+      /(<p\b[^>]*>\s*"?\s*)(?!<b>)(\[\s*\d+\s*\])/gi,
+      "$1<b>$2</b>"
+    );
+
+    html = html.replace(
+      /(<p\b[^>]*>\s*")([\s\S]*?)(<\/p>)/gi,
+      (_, a, b, c) => `<blockquote>\n${a}${b}${c}\n</blockquote>`
+    );
+
+    html = restoreBlockquotes(html, p.blocks);
+    html = stripBadChars(html);
+
+    download(html, "output.html");
+    document.getElementById("log1").textContent = "✅ Siap (Kotak Nombor)";
+    finishProgress(1);
+  };
+
+  r.onerror = () => {
+    document.getElementById("log1").textContent = "❌ Gagal baca file.";
+    stopProgress(1);
+    setProgress(1, 0);
+  };
+
+  r.readAsText(f);
+}
+
+// =========================
+// TOOL 2 – FORMAT NOMBOR TITIK + Auto Blockquote
+// =========================
+function runNombor() {
+  const f = document.getElementById("f2").files[0];
+  if (!f) return alert("Upload file");
+
+  resetProgress(2);
+  runFakeProgress(2, [10, 30, 55, 75], 160);
+
+  const r = new FileReader();
+  r.onload = () => {
+    setProgress(2, 80);
+
+    let html = r.result;
+
+    const p = protectBlockquotes(html);
+    html = p.html;
+
+    // <p>3. ...  => <p><b>[3]</b> ...
+    html = html.replace(
+      /(<p\b[^>]*>\s*)(\d{1,4})\.(?!\d)\s*/gi,
+      (_, startP, n) => `${startP}<b>[${n}]</b> `
+    );
+
+    // auto blockquote <p>" ...
+    html = html.replace(
+      /(<p\b[^>]*>\s*")([\s\S]*?)(<\/p>)/gi,
+      (_, a, b, c) => `<blockquote>\n${a}${b}${c}\n</blockquote>`
+    );
+
+    html = restoreBlockquotes(html, p.blocks);
+    html = stripBadChars(html);
+
+    download(html, "output.html");
+    document.getElementById("log2").textContent = "✅ Siap (Format Nombor)";
+    finishProgress(2);
+  };
+
+  r.onerror = () => {
+    document.getElementById("log2").textContent = "❌ Gagal baca file.";
+    stopProgress(2);
+    setProgress(2, 0);
+  };
+
+  r.readAsText(f);
+}
+
+// =========================
+// TOOL 3 – ALIGN PARAGRAPH
+// =========================
+function runAlign() {
+  const f = document.getElementById("f3").files[0];
+  if (!f) return alert("Upload file");
+
+  resetProgress(3);
+  runFakeProgress(3, [10, 35, 60, 80], 160);
+
+  const r = new FileReader();
+  r.onload = () => {
+    setProgress(3, 85);
+
+    let html = r.result;
+
+    html = html.replace(
+      /<p\b[^>]*>([\s\S]*?)<\/p>/gi,
+      (m, inner) => {
+        if (!inner.trim()) return m;
+        const clean = inner
+          .replace(/\r?\n+/g, " ")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        return `<p>${clean}</p>`;
+      }
+    );
+
+    html = html
+      .replace(/<\/p>\s*\n\s*\n\s*<p>/gi, "</p>\n\n<p>")
+      .replace(/<\/blockquote>\s*\n\s*\n\s*<p>/gi, "</blockquote>\n\n<p>");
+
+    html = stripBadChars(html);
+
+    download(html, "output_aligned.html");
+    document.getElementById("log3").textContent = "✅ Siap (Align)";
+    finishProgress(3);
+  };
+
+  r.onerror = () => {
+    document.getElementById("log3").textContent = "❌ Gagal baca file.";
+    stopProgress(3);
+    setProgress(3, 0);
+  };
+
+  r.readAsText(f);
+}
+
+// =========================
+// DOWNLOAD
+// =========================
+function download(content, name) {
+  const blob = new Blob([content], { type: "text/html;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+}
+</script>
+
+</body>
+</html>
